@@ -20,11 +20,11 @@ class Board
 {
 public:
     Board() = default;
-    Board(const unsigned int W, const unsigned int H) : W(W), H(H)
+    Board(const unsigned int W, const unsigned int H) : W(W), H(H) // Инициализация доски с размерами wxh
     {
     }
 
-    // draws start board
+    // Рисуем доску (1 ошибка, 0 успех)
     int start_draw()
     {
         if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
@@ -32,6 +32,8 @@ public:
             print_exception("SDL_Init can't init SDL2 lib");
             return 1;
         }
+
+        // Установка размеров экрана если не указаны w,h
         if (W == 0 || H == 0)
         {
             SDL_DisplayMode dm;
@@ -44,6 +46,8 @@ public:
             W -= W / 15;
             H = W;
         }
+
+        // Создание игрового окна
         win = SDL_CreateWindow("Checkers", 0, H / 30, W, H, SDL_WINDOW_RESIZABLE);
         if (win == nullptr)
         {
@@ -56,6 +60,7 @@ public:
             print_exception("SDL_CreateRenderer can't create renderer");
             return 1;
         }
+        // Загрузка текстур (изображений)
         board = IMG_LoadTexture(ren, board_path.c_str());
         w_piece = IMG_LoadTexture(ren, piece_white_path.c_str());
         b_piece = IMG_LoadTexture(ren, piece_black_path.c_str());
@@ -63,17 +68,22 @@ public:
         b_queen = IMG_LoadTexture(ren, queen_black_path.c_str());
         back = IMG_LoadTexture(ren, back_path.c_str());
         replay = IMG_LoadTexture(ren, replay_path.c_str());
+
+        // В случае ошибки загрузки текстур - ошибка
         if (!board || !w_piece || !b_piece || !w_queen || !b_queen || !back || !replay)
         {
             print_exception("IMG_LoadTexture can't load main textures from " + textures_path);
             return 1;
         }
+
+        // Получение получившихся размеров и отрисовка игрового окна
         SDL_GetRendererOutputSize(ren, &W, &H);
         make_start_mtx();
         rerender();
         return 0;
     }
 
+    // Обновление отрисовки
     void redraw()
     {
         game_results = -1;
@@ -84,6 +94,7 @@ public:
         clear_highlight();
     }
 
+    // Отрисовка фигуры
     void move_piece(move_pos turn, const int beat_series = 0)
     {
         if (turn.xb != -1)
@@ -93,6 +104,7 @@ public:
         move_piece(turn.x, turn.y, turn.x2, turn.y2, beat_series);
     }
 
+    // Перемещение фигуры
     void move_piece(const POS_T i, const POS_T j, const POS_T i2, const POS_T j2, const int beat_series = 0)
     {
         if (mtx[i2][j2])
@@ -103,6 +115,8 @@ public:
         {
             throw runtime_error("begin position is empty, can't move");
         }
+
+        // Превращение шашки в дамку
         if ((mtx[i][j] == 1 && i2 == 0) || (mtx[i][j] == 2 && i2 == 7))
             mtx[i][j] += 2;
         mtx[i2][j2] = mtx[i][j];
@@ -110,12 +124,15 @@ public:
         add_history(beat_series);
     }
 
+    // Удаление фигуры с доски
     void drop_piece(const POS_T i, const POS_T j)
     {
         mtx[i][j] = 0;
         rerender();
     }
 
+
+    // Превращение в дамку или ошибка
     void turn_into_queen(const POS_T i, const POS_T j)
     {
         if (mtx[i][j] == 0 || mtx[i][j] > 2)
@@ -125,11 +142,14 @@ public:
         mtx[i][j] += 2;
         rerender();
     }
+
+    // Возвращение состояния доски
     vector<vector<POS_T>> get_board() const
     {
         return mtx;
     }
 
+    // Подсветка доступных ходов
     void highlight_cells(vector<pair<POS_T, POS_T>> cells)
     {
         for (auto pos : cells)
@@ -140,6 +160,7 @@ public:
         rerender();
     }
 
+    // Очистка подсветки
     void clear_highlight()
     {
         for (POS_T i = 0; i < 8; ++i)
@@ -149,6 +170,7 @@ public:
         rerender();
     }
 
+    // Активная клетка
     void set_active(const POS_T x, const POS_T y)
     {
         active_x = x;
@@ -156,6 +178,7 @@ public:
         rerender();
     }
 
+    // Очистка активной клетки
     void clear_active()
     {
         active_x = -1;
@@ -163,11 +186,13 @@ public:
         rerender();
     }
 
+    // Проверка если клетка подсвечена
     bool is_highlighted(const POS_T x, const POS_T y)
     {
         return is_highlighted_[x][y];
     }
 
+    // Откат хода назад
     void rollback()
     {
         auto beat_series = max(1, *(history_beat_series.rbegin()));
@@ -181,19 +206,21 @@ public:
         clear_active();
     }
 
+    // Отображение окна победителя
     void show_final(const int res)
     {
         game_results = res;
         rerender();
     }
 
-    // use if window size changed
+    // Изменение размера окна
     void reset_window_size()
     {
         SDL_GetRendererOutputSize(ren, &W, &H);
         rerender();
     }
 
+    // Выход и очистка текстур из памяти
     void quit()
     {
         SDL_DestroyTexture(board);
@@ -208,6 +235,7 @@ public:
         SDL_Quit();
     }
 
+    // Выход при удалении доски
     ~Board()
     {
         if (win)
@@ -215,12 +243,13 @@ public:
     }
 
 private:
+    // Добавление хода в историю
     void add_history(const int beat_series = 0)
     {
         history_mtx.push_back(mtx);
         history_beat_series.push_back(beat_series);
     }
-    // function to make start matrix
+    // Путсая доска
     void make_start_mtx()
     {
         for (POS_T i = 0; i < 8; ++i)
@@ -237,7 +266,7 @@ private:
         add_history();
     }
 
-    // function that re-draw all the textures
+    // Отрисовка кадра
     void rerender()
     {
         // draw board

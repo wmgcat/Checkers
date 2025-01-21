@@ -6,6 +6,7 @@
 #include "Board.h"
 #include "Config.h"
 
+// Констанца для оценки
 const int INF = 1e9;
 
 class Logic
@@ -18,52 +19,35 @@ class Logic
         scoring_mode = (*config)("Bot", "BotScoringType");
         optimization = (*config)("Bot", "Optimization");
     }
-
-    vector<move_pos> find_best_turns(const bool color)
-    {
-        next_best_state.clear();
-        next_move.clear();
-
-        find_first_best_turn(board->get_board(), color, -1, -1, 0);
-
-        int cur_state = 0;
-        vector<move_pos> res;
-        do
-        {
-            res.push_back(next_move[cur_state]);
-            cur_state = next_best_state[cur_state];
-        } while (cur_state != -1 && next_move[cur_state].x != -1);
-        return res;
-    }
-
 private:
     vector<vector<POS_T>> make_turn(vector<vector<POS_T>> mtx, move_pos turn) const
     {
+        // Изменяет состояние доски в соответствии с заданным ходом
         if (turn.xb != -1)
-            mtx[turn.xb][turn.yb] = 0;
+            mtx[turn.xb][turn.yb] = 0;  // Удаление побитой фигуры
         if ((mtx[turn.x][turn.y] == 1 && turn.x2 == 0) || (mtx[turn.x][turn.y] == 2 && turn.x2 == 7))
-            mtx[turn.x][turn.y] += 2;
-        mtx[turn.x2][turn.y2] = mtx[turn.x][turn.y];
-        mtx[turn.x][turn.y] = 0;
-        return mtx;
+            mtx[turn.x][turn.y] += 2;  // Превращение в дамку при достижении противоположной стороны
+        mtx[turn.x2][turn.y2] = mtx[turn.x][turn.y];  // Перемещение фигуры на новую позицию
+        mtx[turn.x][turn.y] = 0;  // Очистка старой позиции
+        return mtx;  // Возврат обновленного состояния доски
     }
 
     double calc_score(const vector<vector<POS_T>> &mtx, const bool first_bot_color) const
     {
-        // color - who is max player
+        // Вычисляет оценку текущего состояния доски для бота
         double w = 0, wq = 0, b = 0, bq = 0;
         for (POS_T i = 0; i < 8; ++i)
         {
             for (POS_T j = 0; j < 8; ++j)
             {
-                w += (mtx[i][j] == 1);
-                wq += (mtx[i][j] == 3);
-                b += (mtx[i][j] == 2);
-                bq += (mtx[i][j] == 4);
+                w += (mtx[i][j] == 1);  // Подсчет белых шашек
+                wq += (mtx[i][j] == 3);  // Подсчет белых дамок
+                b += (mtx[i][j] == 2);  // Подсчет черных шашек
+                bq += (mtx[i][j] == 4);  // Подсчет черных дамок
                 if (scoring_mode == "NumberAndPotential")
                 {
-                    w += 0.05 * (mtx[i][j] == 1) * (7 - i);
-                    b += 0.05 * (mtx[i][j] == 2) * (i);
+                    w += 0.05 * (mtx[i][j] == 1) * (7 - i);  // Учет позиции для белых шашек
+                    b += 0.05 * (mtx[i][j] == 2) * (i);  // Учет позиции для черных шашек
                 }
             }
         }
@@ -73,116 +57,83 @@ private:
             swap(bq, wq);
         }
         if (w + wq == 0)
-            return INF;
+            return INF;  // Максимальная оценка, если все белые фигуры побиты
         if (b + bq == 0)
-            return 0;
+            return 0;  // Минимальная оценка, если все черные фигуры побиты
         int q_coef = 4;
         if (scoring_mode == "NumberAndPotential")
         {
-            q_coef = 5;
+            q_coef = 5;  // Изменение коэффициента для дамок при использовании расширенной оценки
         }
-        return (b + bq * q_coef) / (w + wq * q_coef);
-    }
-
-    double find_first_best_turn(vector<vector<POS_T>> mtx, const bool color, const POS_T x, const POS_T y, size_t state,
-                                double alpha = -1)
-    {
-        next_best_state.push_back(-1);
-        next_move.emplace_back(-1, -1, -1, -1);
-        double best_score = -1;
-        if (state != 0)
-            find_turns(x, y, mtx);
-        auto turns_now = turns;
-        bool have_beats_now = have_beats;
-
-        if (!have_beats_now && state != 0)
-        {
-            return find_best_turns_rec(mtx, 1 - color, 0, alpha);
-        }
-
-        vector<move_pos> best_moves;
-        vector<int> best_states;
-
-        for (auto turn : turns_now)
-        {
-            size_t next_state = next_move.size();
-            double score;
-            if (have_beats_now)
-            {
-                score = find_first_best_turn(make_turn(mtx, turn), color, turn.x2, turn.y2, next_state, best_score);
-            }
-            else
-            {
-                score = find_best_turns_rec(make_turn(mtx, turn), 1 - color, 0, best_score);
-            }
-            if (score > best_score)
-            {
-                best_score = score;
-                next_best_state[state] = (have_beats_now ? int(next_state) : -1);
-                next_move[state] = turn;
-            }
-        }
-        return best_score;
+        return (b + bq * q_coef) / (w + wq * q_coef);  // Вычисление итоговой оценки состояния
     }
 
     double find_best_turns_rec(vector<vector<POS_T>> mtx, const bool color, const size_t depth, double alpha = -1,
                                double beta = INF + 1, const POS_T x = -1, const POS_T y = -1)
     {
-        if (depth == Max_depth)
-        {
-            return calc_score(mtx, (depth % 2 == color));
+        if (depth == Max_depth) { // При достижении максимальной глубины, возврат значения
+          return calc_score(mtx, (depth % 2 == color));
         }
-        if (x != -1)
-        {
+        // Если есть серия побитий - поиск хода
+        if (x != -1) {
             find_turns(x, y, mtx);
         }
-        else
-            find_turns(color, mtx);
-        auto turns_now = turns;
-        bool have_beats_now = have_beats;
-
-        if (!have_beats_now && x != -1)
-        {
+        else {
+            find_turns(color, mtx); // Иначе поиск все возможных ходов, доступных данному игроку
+        }
+        // Сохранение значения, по аналогии выше
+        auto now_turns = turns;
+        auto now_have_beats = have_beats;
+        // Сохранение значения, по аналогии выше
+        if (!now_have_beats && x != 0) {
             return find_best_turns_rec(mtx, 1 - color, depth + 1, alpha, beta);
         }
-
-        if (turns.empty())
-            return (depth % 2 ? 0 : INF);
-
+        // Проверка, есть ли ходы.
+        if (turns.empty()) {
+            // Если есть, то происходит возврат вычисления, победил или проиграл текущий игрок
+            return(depth % 2 ? 0 : INF); // Победа или поражение
+        }
         double min_score = INF + 1;
         double max_score = -1;
-        for (auto turn : turns_now)
-        {
-            double score = 0.0;
-            if (!have_beats_now && x == -1)
-            {
-                score = find_best_turns_rec(make_turn(mtx, turn), 1 - color, depth + 1, alpha, beta);
-            }
-            else
-            {
+        for (auto turn : now_turns) {
+            double score;
+            // Если есть побития, продолжается серия рекурсивных запусков
+            if (now_have_beats) {
                 score = find_best_turns_rec(make_turn(mtx, turn), color, depth, alpha, beta, turn.x2, turn.y2);
             }
+            else {
+                score = find_best_turns_rec(make_turn(mtx, turn), 1 - color, depth + 1, alpha, beta);
+            }
+            // Обновляет минимум и максимум
             min_score = min(min_score, score);
             max_score = max(max_score, score);
-            // alpha-beta pruning
-            if (depth % 2)
+            // Альфа-Бета отсечения.
+            if (depth % 2) { // Если наш ход, то мы максимизатор
                 alpha = max(alpha, max_score);
-            else
+            }
+            else {
                 beta = min(beta, min_score);
-            if (optimization != "O0" && alpha >= beta)
-                return (depth % 2 ? max_score + 1 : min_score - 1);
+            }
+            if (optimization != "O0" && alpha > beta) { // Если альфа больше беты - остановка цикла
+                break;
+            }
+            if (optimization != "O2" && alpha == beta) { // Есть вероятность недосчета значений,смена возвращаемыъ параметров
+                return(depth % 2 ? max_score + 1 : min_score - 1);
+            }
         }
-        return (depth % 2 ? max_score : min_score);
+        return(depth % 2 ? max_score : min_score);
     }
 
 public:
     void find_turns(const bool color)
     {
+        // Поиск всех возможных ходов для заданного цвета на текущей доске
         find_turns(color, board->get_board());
     }
 
     void find_turns(const POS_T x, const POS_T y)
     {
+        // Поиск всех возможных ходов для фигуры на заданной позиции
         find_turns(x, y, board->get_board());
     }
 
@@ -197,22 +148,22 @@ private:
             {
                 if (mtx[i][j] && mtx[i][j] % 2 != color)
                 {
-                    find_turns(i, j, mtx);
+                    find_turns(i, j, mtx);  // Поиск ходов для каждой фигуры заданного цвета
                     if (have_beats && !have_beats_before)
                     {
                         have_beats_before = true;
-                        res_turns.clear();
+                        res_turns.clear();  // Очистка списка ходов, если найдены ходы с побитием
                     }
-                    if ((have_beats_before && have_beats) || !have_beats_before)
+                    if ((have_beats_before && have_beats)  !have_beats_before)
                     {
-                        res_turns.insert(res_turns.end(), turns.begin(), turns.end());
+                        res_turns.insert(res_turns.end(), turns.begin(), turns.end());  // Добавление найденных ходов
                     }
                 }
             }
         }
-        turns = res_turns;
-        shuffle(turns.begin(), turns.end(), rand_eng);
-        have_beats = have_beats_before;
+        turns = res_turns;  // Обновление списка всех возможных ходов
+        shuffle(turns.begin(), turns.end(), rand_eng);  // Перемешивание ходов для случайности
+        have_beats = have_beats_before;  // Обновление флага наличия ходов с побитием
     }
 
     void find_turns(const POS_T x, const POS_T y, const vector<vector<POS_T>> &mtx)
@@ -220,12 +171,12 @@ private:
         turns.clear();
         have_beats = false;
         POS_T type = mtx[x][y];
-        // check beats
+        // Проверка возможности побития
         switch (type)
         {
         case 1:
         case 2:
-            // check pieces
+            // Проверка для обычных шашек
             for (POS_T i = x - 2; i <= x + 2; i += 4)
             {
                 for (POS_T j = y - 2; j <= y + 2; j += 4)
@@ -235,12 +186,12 @@ private:
                     POS_T xb = (x + i) / 2, yb = (y + j) / 2;
                     if (mtx[i][j] || !mtx[xb][yb] || mtx[xb][yb] % 2 == type % 2)
                         continue;
-                    turns.emplace_back(x, y, i, j, xb, yb);
+                    turns.emplace_back(x, y, i, j, xb, yb);  // Добавление хода с побитием
                 }
             }
             break;
         default:
-            // check queens
+            // Проверка для дамок
             for (POS_T i = -1; i <= 1; i += 2)
             {
                 for (POS_T j = -1; j <= 1; j += 2)
@@ -259,36 +210,36 @@ private:
                         }
                         if (xb != -1 && xb != i2)
                         {
-                            turns.emplace_back(x, y, i2, j2, xb, yb);
+                            turns.emplace_back(x, y, i2, j2, xb, yb);  // Добавление хода с побитием
                         }
                     }
                 }
             }
             break;
         }
-        // check other turns
+        // Проверка других возможных ходов
         if (!turns.empty())
         {
             have_beats = true;
-            return;
+            return;  // Выход, если найдены ходы с побитием
         }
         switch (type)
         {
         case 1:
         case 2:
-            // check pieces
+            // Проверка для обычных шашек
             {
                 POS_T i = ((type % 2) ? x - 1 : x + 1);
                 for (POS_T j = y - 1; j <= y + 1; j += 2)
                 {
                     if (i < 0 || i > 7 || j < 0 || j > 7 || mtx[i][j])
                         continue;
-                    turns.emplace_back(x, y, i, j);
+                    turns.emplace_back(x, y, i, j);  // Добавление обычного хода
                 }
                 break;
             }
         default:
-            // check queens
+            // Проверка для дамок
             for (POS_T i = -1; i <= 1; i += 2)
             {
                 for (POS_T j = -1; j <= 1; j += 2)
@@ -297,7 +248,7 @@ private:
                     {
                         if (mtx[i2][j2])
                             break;
-                        turns.emplace_back(x, y, i2, j2);
+                        turns.emplace_back(x, y, i2, j2);  // Добавление обычного хода
                     }
                 }
             }
@@ -305,17 +256,17 @@ private:
         }
     }
 
-  public:
-    vector<move_pos> turns;
-    bool have_beats;
-    int Max_depth;
+public:
+    vector<move_pos> turns;  // Список возможных ходов для текущего состояния
+    bool have_beats;  // Флаг наличия ходов с побитием
+    int Max_depth;  // Максимальная глубина поиска для бота
 
-  private:
-    default_random_engine rand_eng;
-    string scoring_mode;
-    string optimization;
-    vector<move_pos> next_move;
-    vector<int> next_best_state;
-    Board *board;
-    Config *config;
+private:
+    default_random_engine rand_eng;  // Генератор случайных чисел для перемешивания ходов
+    string scoring_mode;  // Режим оценки для бота: только количество или количество и позиция
+    string optimization;  // Уровень оптимизации для бота
+    vector<move_pos> next_move;  // Вектор для хранения следующего лучшего хода
+    vector<int> next_best_state;  // Вектор для хранения следующего лучшего состояния
+    Board *board;  // Указатель на объект Board для доступа к состоянию доски
+    Config *config;  // Указатель на объект Config для доступа к настройкам игры
 };
