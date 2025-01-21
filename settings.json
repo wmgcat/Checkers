@@ -5,12 +5,12 @@
     },
     "Bot": {
         "IsWhiteBot": true,
-        "IsBlackBot": true,
+        "IsBlackBot": false,
         "WhiteBotLevel": 5,
         "BlackBotLevel": 5,
         "BotScoringType": "NumberAndPotential",
         "BotDelayMS": 250,
-        "NoRandom": true,
+        "NoRandom": false,
         "Optimization": "O4"
     },
     "Game": {
